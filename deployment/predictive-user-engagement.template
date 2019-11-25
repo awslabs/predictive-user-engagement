@@ -1,0 +1,140 @@
+# Predictive User Engagement Solution
+#
+# template for Predictive User Engagement Solution
+# **DO NOT DELETE**
+#
+# author: aws-solutions-builder@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: (SO0049) - Predictive User Engagement Solution. Predictive User Engagement (PUE) combines two fully managed AWS services and enables developers to quickly and easily add personalization to their web and mobile applications.
+
+Parameters:
+  PersonalizeCampaignArn:
+    Type: String
+    Description: Full ARN of the configured Personalize Campaign
+  PinpointProjectId:
+    Type: String
+    Description: Amazon Pinpoint Project / Application ID
+
+Resources:
+  PUEGetRecsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "mobiletargeting:GetUserEndpoints"
+                  - "mobiletargeting:GetApp"
+                  - "mobiletargeting:UpdateEndpointsBatch"
+                  - "mobiletargeting:GetApps"
+                  - "mobiletargeting:GetEndpoint"
+                  - "mobiletargeting:GetApplicationSettings"
+                  - "mobiletargeting:UpdateEndpoint"
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*"
+              -
+                Effect: "Allow"
+                Action: "personalize:GetRecommendations"
+                Resource: !Ref PersonalizeCampaignArn
+
+  PUEGetRecsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt PUEGetRecsLambdaRole.Arn
+      Runtime: "python3.7"
+      Timeout: 60
+      Environment:
+        Variables:
+          CAMPAIGN_ARN: !Ref PersonalizeCampaignArn
+          PROJECT_ID: !Ref PinpointProjectId
+          REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          ###################
+          ## The following is done for solution demonstration purposes and will change with specific implementations
+          ## AWS_REGION is set in the Lambda function and is set via environment variables
+          ## PROJECT_ID is set in the Lambda function and is set via environment variables
+          ## CAMPAIGN_ARN is set in the Lambda function and is set via environment variables
+          ## USER_ID is set in the Lambda function and should be passed in as an argument
+          ## endpoint_id is set to USER_ID so the Personalize dataset user_id recommendations are stored in a corresponding Pinpoint endpoint
+          import os
+          AWS_REGION = os.environ.get('REGION')
+          PROJECT_ID = os.environ.get('PROJECT_ID')
+          CAMPAIGN_ARN = os.environ.get('CAMPAIGN_ARN')
+          USER_ID = '12456'
+          endpoint_id = USER_ID
+          ###################
+
+          from datetime import datetime
+          import json
+          import boto3
+          import logging;
+          from botocore.exceptions import ClientError
+
+          DATE = datetime.now()
+
+          personalize           = boto3.client('personalize')
+          personalize_runtime   = boto3.client('personalize-runtime')
+          personalize_events    = boto3.client('personalize-events')
+          pinpoint = boto3.client('pinpoint')
+
+          def lambda_handler(event, context):
+              itemList = get_recommended_items(USER_ID,CAMPAIGN_ARN)
+              response = update_pinpoint_endpoint(PROJECT_ID,endpoint_id,itemList)
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Lambda execution completed.')
+              }
+
+          def get_recommended_items(user_id, campaign_arn):
+              response = personalize_runtime.get_recommendations(campaignArn=campaign_arn,
+                                                                 userId=str(user_id),
+                                                                 numResults=10)
+              itemList = response['itemList']
+              return itemList
+
+          def update_pinpoint_endpoint(project_id,endpoint_id,itemList):
+              itemlistStr = []
+
+              for item in itemList:
+                  itemlistStr.append(item['itemId'])
+
+              pinpoint.update_endpoint(
+              ApplicationId=project_id,
+              EndpointId=endpoint_id,
+              EndpointRequest={
+                                  'User': {
+                                      'UserAttributes': {
+                                          'recommended_items':
+                                              itemlistStr
+
+                                      }
+                                  }
+                              }
+              )
+
+              return
