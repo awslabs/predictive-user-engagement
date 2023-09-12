@@ -1,3 +1,6 @@
+#Deprecation Notice
+This AWS Solution has been archived and is no longer maintained by AWS. To discover other solutions, please visit the [AWS Solutions Library](https://aws.amazon.com/solutions/).
+
 # Predictive User Engagement solution
 Predictive User Engagement (PUE) combines two fully managed AWS services and enables developers to quickly and easily add personalization to their web and mobile applications. Developers can combine predictions and recommendations with real-time notifications and analytics, based on a user’s engagement, all without need of machine learning expertise.
 
